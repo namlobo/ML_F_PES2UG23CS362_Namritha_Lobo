@@ -70,29 +70,49 @@ def get_avg_info_of_attribute(data: np.ndarray, attribute: int) -> float:
     #   3. Weight it by the proportion of samples with that value
     #   4. Sum all weighted entropies
     
+    # data = np.asarray(data)
+   
+    # if data.size == 0:
+    #     return 0.0
+    
+    # n_cols = data.shape[1] if data.ndim >1 else 1 #find no. of cols only when dimension is greater than 1
+    
+    # if attribute<0 or attribute >=n_cols -1: #ensure that attribute index is valid and its not refering to the target class
+    #     raise IndexError(f"Attribute index {attribute} out of range")
+    
+    # total = data.shape[0]
+    # weighted_sum = 0.0 
+
+    # unique_vals, counts = np.unique(data[:,attribute], return_counts = True)
+    # #get all unique values of chosen attribute and how many samples hv each value  - like for outlook - sunny rainy, overcast etc
+
+    # for val, countt in zip(unique_vals, counts): #for each unique val and its freq
+    #     subset = data[data[:,attribute]==val] #extract the subset of rows where attribute has the current val
+    #     subset_entropy = get_entropy_of_dataset(subset)
+    #     weighted_sum += (countt/total)*subset_entropy
+    # return float(weighted_sum)
     data = np.asarray(data)
    
     if data.size == 0:
         return 0.0
     
-    n_cols = data.shape[1] if data.ndim >1 else 1 #find no. of cols only when dimension is greater than 1
+    n_cols = data.shape[1] if data.ndim > 1 else 1
     
-    if attribute<0 or attribute >=n_cols -1: #ensure that attribute index is valid and its not refering to the target class
+    if attribute < 0 or attribute >= n_cols - 1:
         raise IndexError(f"Attribute index {attribute} out of range")
     
     total = data.shape[0]
     weighted_sum = 0.0 
 
-    unique_vals, counts = np.unique(data[:,attribute], return_count = True)
-    #get all unique values of chosen attribute and how many samples hv each value  - like for outlook - sunny rainy, overcast etc
+    # ✅ FIXED: use return_counts
+    unique_vals, counts = np.unique(data[:, attribute], return_counts=True)
 
-    for val, countt in zip(unique_vals, counts): #for each unique val and its freq
-        subset = data[data[:,attribute]==val] #extract the subset of rows where attribute has the current val
+    for val, countt in zip(unique_vals, counts):
+        subset = data[data[:, attribute] == val]
         subset_entropy = get_entropy_of_dataset(subset)
-        weight = countt/total
-        weighted_sum += weight*subset_entropy
-    return float(weighted_sum)
+        weighted_sum += (countt / total) * subset_entropy
 
+    return float(weighted_sum)
 
 def get_information_gain(data: np.ndarray, attribute: int) -> float:
     """
@@ -160,5 +180,75 @@ def get_selected_attribute(data: np.ndarray) -> tuple:
 
     for attr in range(no_attri):
         gains[attr] = get_information_gain(data, attr)
-    selected = max(gains,keys= gains.get) if gains else -1
+    selected = max(gains,key= gains.get) if gains else -1
     return gains, selected
+
+
+def majority_class(y):
+    #Return the majority class label from a list/array y.
+    counts = Counter(y)
+    return counts.most_common(1)[0][0]
+
+
+def build_tree(data, attributes=None):
+    
+    #Recursively build decision tree using ID3.
+    
+   
+    data = np.asarray(data)
+    y = data[:, -1]
+    
+    # Stopping condition 1: all same class
+    if len(set(y)) == 1:
+        return {"label": y[0]}
+    
+    # Stopping condition 2: no attributes left
+    n_cols = data.shape[1]
+    if attributes is None:
+        attributes = list(range(n_cols - 1))
+    if not attributes:
+        return {"label": majority_class(y)}
+    
+    # Select best attribute
+    gains, best_attr = get_selected_attribute(data)
+    if best_attr == -1:
+        return {"label": majority_class(y)}
+    
+    tree = {"attribute": best_attr, "children": {}}
+    
+    # Recurse on each split
+    for val in np.unique(data[:, best_attr]):
+        subset = data[data[:, best_attr] == val]
+        if subset.shape[0] == 0:
+            tree["children"][val] = {"label": majority_class(y)}
+        else:
+            remaining_attrs = [a for a in attributes if a != best_attr]
+            tree["children"][val] = build_tree(subset, remaining_attrs)
+    
+    return tree
+
+
+def predict(tree, sample):
+    
+    #Predict the class label for a single sample using the decision tree.
+    
+    while "label" not in tree:
+        attr = tree["attribute"]
+        val = sample[attr]
+        if val in tree["children"]:
+            tree = tree["children"][val]
+        else:
+            # unseen value → return majority class of this node’s children
+            labels = []
+            for child in tree["children"].values():
+                if "label" in child:
+                    labels.append(child["label"])
+            return majority_class(labels) if labels else None
+    return tree["label"]
+
+
+def predict_all(tree, data):
+    
+    #Predict labels for all rows in dataset using the decision tree.
+    
+    return [predict(tree, row) for row in data]
